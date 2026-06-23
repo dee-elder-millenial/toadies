@@ -6,12 +6,17 @@ __pycache__/
 build/
 dist/
 
+# Secrets — never commit
+.env
+*.env
+
 # Local runtime data — never commit
 *.db
 *.db-wal
 *.db-shm
 dataset.jsonl
 .local/
+localai/models/
 
 # Editor/OS
 .DS_Store
