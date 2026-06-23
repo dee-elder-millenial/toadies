@@ -12,7 +12,9 @@ import json
 import sys
 from dataclasses import asdict
 
-from . import accountant, config, gremlin, trust
+from dataclasses import asdict as _asdict
+
+from . import accountant, bouncer, config, gremlin, trust
 from .store import Store
 
 
@@ -62,6 +64,36 @@ def _cmd_accountant(args) -> int:
     return 0
 
 
+def _cmd_bouncer(args) -> int:
+    if args.text is not None:
+        text = args.text
+    elif args.file:
+        text = _read_input(args.file)
+    else:
+        text = sys.stdin.read()
+
+    result = bouncer.scan(text, redact=args.redact)
+    if args.json:
+        print(json.dumps({
+            "ok": True,
+            "toadie": "bouncer",
+            "safe": result.safe,
+            "decision": result.decision,
+            "findings": [_asdict(f) for f in result.findings],
+            "redacted_text": result.redacted_text,
+        }))
+    elif result.safe:
+        print("bouncer: allow — no secrets detected")
+    else:
+        print(f"bouncer: {result.decision} — {len(result.findings)} finding(s):")
+        for f in result.findings:
+            print(f"  [{f.severity}] {f.kind} at line {f.line}")
+        if result.redacted_text is not None:
+            print("--- redacted ---")
+            print(result.redacted_text)
+    return 0 if result.safe else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="toadiectl", description="Local Toadies sidecar.")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -85,6 +117,13 @@ def build_parser() -> argparse.ArgumentParser:
     ac.add_argument("action", choices=["status"])
     ac.add_argument("--db", default=config.default_db_path())
     ac.set_defaults(func=_cmd_accountant)
+
+    bo = sub.add_parser("bouncer", help="scan text/file/stdin for secrets")
+    bo.add_argument("--text", default=None, help="scan this literal string")
+    bo.add_argument("--file", default=None, help="scan this file")
+    bo.add_argument("--redact", action="store_true", help="emit redacted text instead of blocking")
+    bo.add_argument("--json", action="store_true")
+    bo.set_defaults(func=_cmd_bouncer)
 
     return parser
 

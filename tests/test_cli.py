@@ -54,3 +54,17 @@ def test_grade_command_then_accountant_status(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "gremlin/pytest" in out
     assert "PROBATION" in out  # one grade isn't enough to leave probation
+
+
+def test_bouncer_cli_blocks_secret_with_nonzero_exit(capsys):
+    rc = main(["bouncer", "--text", "x\n-----BEGIN RSA PRIVATE KEY-----\ny", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["decision"] == "block"
+    assert payload["safe"] is False
+    assert rc == 1  # nonzero so hooks/pipelines can fail closed on secrets
+
+
+def test_bouncer_cli_allows_clean_text(capsys):
+    rc = main(["bouncer", "--text", "an ordinary commit message", "--json"])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["decision"] == "allow"
