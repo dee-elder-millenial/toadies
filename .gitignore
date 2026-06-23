@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Local runtime data — never commit
+*.db
+*.db-wal
+*.db-shm
+dataset.jsonl
+.local/
+
+# Editor/OS
+.DS_Store
