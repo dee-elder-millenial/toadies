@@ -71,6 +71,22 @@ def test_bouncer_cli_allows_clean_text(capsys):
     assert json.loads(capsys.readouterr().out)["decision"] == "allow"
 
 
+def test_bouncer_cli_warns_on_entropy_with_zero_exit(capsys):
+    rc = main(["bouncer", "--text", "DB_PASSWORD=9f3Kx7Qz2Lm8Rt5Vw1Yb4Nc6Pd0Sg3Hj", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["decision"] == "warn"
+    assert payload["safe"] is True
+    assert rc == 0  # advisory: high-entropy does not block commits
+
+
+def test_bouncer_cli_warn_prints_findings_not_allow(capsys):
+    rc = main(["bouncer", "--text", "DB_PASSWORD=9f3Kx7Qz2Lm8Rt5Vw1Yb4Nc6Pd0Sg3Hj"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "warn" in out
+    assert "no secrets detected" not in out  # must not be mislabeled as a clean allow
+
+
 class FailingStore:
     def __init__(self, *args, **kwargs):
         raise OSError("trust store unavailable")

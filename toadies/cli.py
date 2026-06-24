@@ -107,12 +107,14 @@ def _cmd_bouncer(args) -> int:
             "findings": [_asdict(f) for f in result.findings],
             "redacted_text": result.redacted_text,
         }))
-    elif result.safe:
+    elif not result.findings:
         print("bouncer: allow — no secrets detected")
     else:
+        # warn (advisory, safe) and block (gate, unsafe) both list their findings.
         print(f"bouncer: {result.decision} — {len(result.findings)} finding(s):")
         for f in result.findings:
-            print(f"  [{f.severity}] {f.kind} at line {f.line}")
+            score = f" ~{f.score:.1f} bits" if f.score is not None else ""
+            print(f"  [{f.severity}] {f.kind} at line {f.line}{score}")
         if result.redacted_text is not None:
             print("--- redacted ---")
             print(result.redacted_text)

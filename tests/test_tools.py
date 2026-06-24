@@ -227,3 +227,29 @@ def test_toady_dispatch_routes_through_the_distribution_layer(tmp_path, monkeypa
     out = tools.dispatch("toady_dispatch", {"toady": "gremlin", "payload": {"text": raw}})
     assert out["ok"] is True
     assert out["summary_chars"] < out["original_chars"]
+
+
+def test_list_tools_includes_bouncer_config():
+    names = {t["name"] for t in tools.list_tools()}
+    assert "bouncer_config" in names
+
+
+def test_bouncer_config_get_returns_effective_config(monkeypatch, tmp_path):
+    monkeypatch.delenv("BOUNCER_ADVISORY", raising=False)
+    monkeypatch.delenv("BOUNCER_GATE", raising=False)
+    out = tools.dispatch("bouncer_config", {"action": "get"})
+    assert out["entropy"]["bits"] == 3.5
+    assert "private_key" in out["gate"]["patterns"]
+
+
+def test_bouncer_config_set_merges_advisory(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOUNCER_ADVISORY", str(tmp_path / "advisory.toml"))
+    out = tools.dispatch("bouncer_config", {"action": "set", "patch": {"entropy": {"bits": 4.0}}})
+    assert out["entropy"]["bits"] == 4.0
+
+
+def test_bouncer_config_set_rejects_gate_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOUNCER_ADVISORY", str(tmp_path / "advisory.toml"))
+    with pytest.raises(tools.ToolError):
+        tools.dispatch("bouncer_config", {"action": "set", "patch": {"block_severities": ["critical"]}})
+    assert not (tmp_path / "advisory.toml").exists()

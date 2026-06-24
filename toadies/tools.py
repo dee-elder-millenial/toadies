@@ -144,6 +144,22 @@ def list_tools():
                 "required": ["toady"],
             },
         },
+        {
+            "name": "bouncer_config",
+            "description": "Read or tune Bouncer's ADVISORY config (entropy thresholds, "
+                           "benign-shape recognizers, warn policy). `{action:'get'}` returns "
+                           "the effective config; `{action:'set', patch:{...}}` merges into "
+                           "the advisory file. The hard gate (blocking patterns / "
+                           "block_severities) is NOT writable here.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {"type": "string", "enum": ["get", "set"]},
+                    "patch": {"type": "object"},
+                },
+                "required": ["action"],
+            },
+        },
     ]
 
 
@@ -164,7 +180,21 @@ def dispatch(name, arguments, *, db_path=None):
         return _toadie_interjection_inbox(arguments, db_path)
     if name == "toady_dispatch":
         return _toady_dispatch(arguments)
+    if name == "bouncer_config":
+        return _bouncer_config(arguments)
     raise ToolError(f"unknown tool: {name}")
+
+
+def _bouncer_config(args):
+    action = args.get("action", "get")
+    if action == "get":
+        return bouncer.config_view()
+    if action == "set":
+        try:
+            return bouncer.set_advisory(args.get("patch", {}))
+        except bouncer.BouncerConfigError as exc:
+            raise ToolError(str(exc)) from exc
+    raise ToolError(f"bouncer_config: unknown action {action!r}")
 
 
 def _toady_dispatch(args):
