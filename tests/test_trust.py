@@ -1,4 +1,5 @@
 import random
+import pytest
 
 from toadies import trust
 
@@ -142,3 +143,13 @@ def test_first_grade_seeds_ema_to_score_and_records():
     # persisted, and the grade is logged for the audit trail
     assert store.competency[("gremlin", "pytest")]["ema"] == 0.9
     assert len(store.grades) == 1
+
+
+def test_record_grade_rejects_invalid_inputs():
+    store = FakeStore()
+    with pytest.raises(ValueError):
+        trust.record_grade(store, "gremlin", "pytest", 1.2)
+    with pytest.raises(ValueError):
+        trust.record_grade(store, "gremlin", "pytest", -0.01)
+    with pytest.raises(ValueError):
+        trust.record_grade(store, "gremlin", "pytest", 0.5, source="nonsense")

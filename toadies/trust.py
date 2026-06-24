@@ -45,6 +45,25 @@ _OUTCOME_SCORES = {"merit": 0.90, "demerit": 0.20}
 # Per-output confidence below this forces paid review regardless of leash level.
 CONFIDENCE_FLOOR = 0.55
 
+_VALID_SOURCES = {"rubric", "outcome"}
+
+
+def _coerce_score(score):
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        raise ValueError(f"score must be a number, got {type(score).__name__}")
+
+    if score < 0.0 or score > 1.0:
+        raise ValueError(f"score must be in [0.0, 1.0], got {score!r}")
+    return score
+
+
+def _coerce_source(source):
+    if source not in _VALID_SOURCES:
+        raise ValueError(f"source must be one of {_VALID_SOURCES!r}, got {source!r}")
+    return source
+
 
 def update_ema(old_ema, score, alpha):
     return alpha * score + (1 - alpha) * old_ema
@@ -108,6 +127,8 @@ class CompetencyState:
 def record_grade(store, toadie, task_type, score, source="rubric",
                  *, prompt_hash=None, output_hash=None, event_id=None, alpha=ALPHA):
     """Record one grade, update the smoothed score, and recompute the leash level."""
+    score = _coerce_score(score)
+    source = _coerce_source(source)
     prev = store.get_competency(toadie, task_type)
     if prev is None:
         ema = score              # cold start: seed to the first score

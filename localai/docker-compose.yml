@@ -1,18 +1,19 @@
-# LocalAI runtime for the Toadies sidecar.
-# CPU inference (the RX 580 / Polaris has no usable ROCm/CUDA path).
-# Bound to all interfaces (0.0.0.0) to serve the local network.
-# Auth: requires an API key, read from localai/.env (LOCALAI_API_KEY=...).
-# The .env file is gitignored — the key is NEVER committed. See RECOVERY.md.
+# Caddy HTTPS front door for the host-native Ollama server.
+# Ollama runs natively on the host (systemd) bound to 127.0.0.1:11434 with Vulkan GPU.
+# Caddy uses host networking so it can reach that loopback while terminating TLS on the LAN.
 services:
-  localai:
-    image: localai/localai:latest
-    container_name: local-ai
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./models:/models
-    environment:
-      - MODELS_PATH=/models
-      - THREADS=8
-      - API_KEY=${LOCALAI_API_KEY:?set LOCALAI_API_KEY in localai/.env (see RECOVERY.md)}
+  caddy:
+    image: caddy:2
+    container_name: ai-https
     restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/certs:/etc/caddy/certs:ro
+      - localai_caddy_data:/data
+      - localai_caddy_config:/config
+    command: caddy run --config /etc/caddy/Caddyfile
+
+volumes:
+  localai_caddy_data:
+  localai_caddy_config:

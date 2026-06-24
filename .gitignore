@@ -20,3 +20,10 @@ localai/models/
 
 # Editor/OS
 .DS_Store
+
+# secrets / sync / scratch (never commit)
+localai/caddy/certs/
+*.key
+*.sb-*
+HeyToadette.txt*
+localai/localhost.crt

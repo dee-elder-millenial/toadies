@@ -1,0 +1,29 @@
+{
+  auto_https off
+  log {
+    output stdout
+    level INFO
+  }
+}
+
+# Plain-HTTP front door: bounce everything to HTTPS. No cert needed here.
+:80 {
+  redir https://{host}{uri}
+}
+
+# Shared TLS + reverse-proxy to the host's Ollama (127.0.0.1:11434).
+# Ollama stays bound to localhost; only Caddy faces the LAN.
+(ollama) {
+  tls /etc/caddy/certs/localai.crt /etc/caddy/certs/localai.key
+  reverse_proxy 127.0.0.1:11434 {
+    header_up Host 127.0.0.1:11434
+  }
+}
+
+:443 {
+  import ollama
+}
+
+:8443 {
+  import ollama
+}

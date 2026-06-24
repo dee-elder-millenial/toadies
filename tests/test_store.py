@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 from toadies import trust
 from toadies.store import Store
 
@@ -25,4 +27,24 @@ def test_grades_are_appended_for_the_audit_trail(tmp_path):
     for _ in range(3):
         trust.record_grade(s, "gremlin", "pytest", 0.8)
     assert s.grade_count("gremlin", "pytest") == 3
+    s.close()
+
+
+def test_list_events_normalizes_iso8601_created_at_cutoff(tmp_path):
+    db = tmp_path / "toadies.db"
+    s = Store(db)
+    s.insert_event(
+        id="evt-1",
+        event_type="toadie_interjection",
+        toadie="toadie-a",
+        metadata_json='{"message":"hello"}',
+    )
+    now = datetime.now(timezone.utc)
+
+    rows_before = s.list_events("toadie_interjection", limit=5, since_created_at=(now - timedelta(minutes=1)).isoformat())
+    assert len(rows_before) == 1
+
+    rows_after = s.list_events("toadie_interjection", limit=5, since_created_at=(now + timedelta(days=1)).isoformat())
+    assert len(rows_after) == 0
+
     s.close()

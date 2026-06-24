@@ -10,12 +10,23 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from . import accountant, bouncer, config, gremlin, trust
+from . import accountant, bouncer, config, gremlin, interjection, reviewer, trust
 from .store import Store
 
 
 class ToolError(Exception):
     """Unknown tool or bad arguments."""
+
+
+def _submit_grade_error(toadie, task_type):
+    return {
+        "ok": False,
+        "toadie": "accountant",
+        "task_type": task_type,
+        "leash_level": "probation",
+        "ema": 0.0,
+        "samples": 0,
+    }
 
 
 def list_tools():
@@ -67,6 +78,57 @@ def list_tools():
                 "required": ["toadie", "task_type", "score"],
             },
         },
+        {
+            "name": "judge_and_grade",
+            "description": "Ask a judge model to grade a Toadie output and persist the grade in trust.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "toadie": {"type": "string"},
+                    "task_type": {"type": "string"},
+                    "input_text": {"type": "string"},
+                    "output_text": {"type": "string"},
+                    "model": {"type": "string"},
+                    "base_url": {"type": "string"},
+                    "api_key": {"type": "string"},
+                    "source": {"type": "string", "enum": ["rubric", "outcome"]},
+                    "dataset_path": {"type": "string"},
+                },
+                "required": ["toadie", "task_type", "output_text"],
+            },
+        },
+        {
+            "name": "toadie_interject",
+            "description": "Submit a high-confidence finding from a toadie to the interjection channel.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "toadie": {"type": "string"},
+                    "task_type": {"type": "string"},
+                    "message": {"type": "string"},
+                    "details": {"type": "string"},
+                    "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                    "requested_delivery": {"type": "string", "enum": ["auto", "interrupt", "append"]},
+                    "task_context": {"type": "object"},
+                },
+                "required": ["toadie", "task_type", "message"],
+            },
+        },
+        {
+            "name": "toadie_interjection_inbox",
+            "description": "Read latest interjections for Robot. Filter by urgency/delivery/toadie/task_type.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer"},
+                    "toadie": {"type": "string"},
+                    "task_type": {"type": "string"},
+                    "urgency": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                    "delivery": {"type": "string", "enum": ["interrupt", "append"]},
+                    "since_created_at": {"type": "string"},
+                },
+            },
+        },
     ]
 
 
@@ -79,6 +141,12 @@ def dispatch(name, arguments, *, db_path=None):
         return _accountant_status(db_path)
     if name == "submit_grade":
         return _submit_grade(arguments, db_path)
+    if name == "judge_and_grade":
+        return _judge_and_grade(arguments, db_path)
+    if name == "toadie_interject":
+        return _toadie_interject(arguments, db_path)
+    if name == "toadie_interjection_inbox":
+        return _toadie_interjection_inbox(arguments, db_path)
     raise ToolError(f"unknown tool: {name}")
 
 
@@ -116,24 +184,122 @@ def _bouncer_scan(args):
 
 
 def _accountant_status(db_path):
-    s = Store(db_path or config.default_db_path())
+    db_path = db_path or config.default_db_path()
     try:
-        return {"ok": True, "toadie": "accountant",
-                "rows": accountant.status(s),
-                "summary_markdown": accountant.render_status(s)}
-    finally:
-        s.close()
+        s = Store(db_path)
+        try:
+            rows = accountant.status(s)
+            return {"ok": True, "toadie": "accountant",
+                    "rows": rows,
+                    "summary_markdown": accountant.render_status(s)}
+        finally:
+            s.close()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "toadie": "accountant",
+            "rows": [],
+            "summary_markdown": (
+                "Accountant data store unavailable. "
+                "Trust defaults to probation and review is treated as unsafe."
+            ),
+            "error": str(exc),
+        }
 
 
 def _submit_grade(args, db_path):
     for required in ("toadie", "task_type", "score"):
         if required not in args:
             raise ToolError(f"submit_grade requires `{required}`")
-    s = Store(db_path or config.default_db_path())
     try:
-        state = trust.record_grade(s, args["toadie"], args["task_type"], args["score"],
-                                   source=args.get("source", "rubric"))
-    finally:
-        s.close()
+        score = trust._coerce_score(args["score"])
+        source = trust._coerce_source(args.get("source", "rubric"))
+    except ValueError as exc:
+        raise ToolError(str(exc))
+
+    db_path = db_path or config.default_db_path()
+    try:
+        s = Store(db_path)
+        try:
+            state = trust.record_grade(
+                s,
+                args["toadie"],
+                args["task_type"],
+                score,
+                source=source,
+            )
+        finally:
+            s.close()
+    except Exception as exc:
+        return {
+            **_submit_grade_error(args["toadie"], args["task_type"]),
+            "error": str(exc),
+            "source": source,
+            "score": score,
+        }
     return {"ok": True, "toadie": "accountant", "leash_level": state.leash_level,
             "ema": state.ema, "samples": state.samples}
+
+
+def _judge_and_grade(args, db_path):
+    for required in ("toadie", "task_type", "output_text"):
+        if required not in args:
+            raise ToolError(f"judge_and_grade requires `{required}`")
+
+    try:
+        output_text = str(args["output_text"])
+        input_text = str(args.get("input_text", ""))
+        model = args.get("model", reviewer.DEFAULT_JUDGE_MODEL)
+        base_url = args.get("base_url", None)
+        api_key = args.get("api_key", None)
+        source = trust._coerce_source(args.get("source", "rubric"))
+        dataset_path = args.get("dataset_path", None)
+        if dataset_path is not None:
+            dataset_path = str(dataset_path)
+    except Exception as exc:
+        raise ToolError(f"judge_and_grade argument error: {exc}")
+
+    return reviewer.review_and_record(
+        args["toadie"],
+        args["task_type"],
+        input_text,
+        output_text,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        source=source,
+        db_path=db_path or config.default_db_path(),
+        dataset_path=dataset_path,
+    )
+
+
+def _toadie_interject(args, db_path):
+    for required in ("toadie", "task_type", "message"):
+        if required not in args:
+            raise ToolError(f"toadie_interject requires `{required}`")
+
+    return interjection.post_interjection(
+        args["toadie"],
+        args["task_type"],
+        message=args["message"],
+        details=args.get("details"),
+        urgency=args.get("urgency", "medium"),
+        requested_delivery=args.get("requested_delivery", "auto"),
+        task_context=args.get("task_context"),
+        db_path=db_path or config.default_db_path(),
+    )
+
+
+def _toadie_interjection_inbox(args, db_path):
+    return {
+        "ok": True,
+        "interjections": interjection.list_interjections(
+            db_path=db_path or config.default_db_path(),
+            limit=args.get("limit", 20),
+            toadie=args.get("toadie"),
+            task_type=args.get("task_type"),
+            urgency=args.get("urgency"),
+            delivery=args.get("delivery"),
+            since_created_at=args.get("since_created_at"),
+        ),
+    }
