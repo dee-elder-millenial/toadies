@@ -78,3 +78,11 @@ def test_resolve_unknown_toady_raises(tmp_path):
     reg = registry.load(_write(tmp_path, VALID))
     with pytest.raises(registry.RegistryError):
         reg.resolve("nobody")
+
+
+def test_load_default_resolves_the_built_deterministic_toadies():
+    reg = registry.load_default()
+    gremlin = reg.resolve("gremlin")
+    assert gremlin.tier == "deterministic"
+    assert gremlin.handler == "gremlin_compress"
+    assert reg.resolve("bouncer").handler == "bouncer_scan"

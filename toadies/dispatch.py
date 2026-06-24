@@ -7,7 +7,7 @@ ones (with always-fall-back-to-GPU on failure, then a loud ToadyUnavailable).
 
 from __future__ import annotations
 
-from . import localai, tools
+from . import localai, registry as _registry, tools
 
 
 class ToadyUnavailable(Exception):
@@ -17,6 +17,11 @@ class ToadyUnavailable(Exception):
         self.toady = toady
         self.tried = tried
         super().__init__(f"toady {toady!r} unavailable; tried boxes {tried}")
+
+
+def run(toady_name: str, payload: dict, *, transport=None) -> dict:
+    """Dispatch a toady through the repo's default registry (the common entry point)."""
+    return dispatch(_registry.load_default(), toady_name, payload, transport=transport)
 
 
 def dispatch(reg, toady_name: str, payload: dict, *, transport=None) -> dict:

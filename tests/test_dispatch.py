@@ -93,3 +93,13 @@ def test_dispatch_raises_toady_unavailable_when_both_boxes_fail(tmp_path):
             reg, "scribe", {"messages": [{"role": "user", "content": "x"}]}, transport=transport,
         )
     assert excinfo.value.tried == ["desktop", "workbench"]
+
+
+def test_run_routes_through_the_default_registry(tmp_path, monkeypatch):
+    cfg = tmp_path / "toady_registry.toml"
+    cfg.write_text(CONFIG)
+    monkeypatch.setenv("TOADIES_REGISTRY", str(cfg))
+    raw = "log line\n" * 30 + "FAILED tests/test_x.py::t - assert 1 == 2\n"
+    out = dispatch.run("gremlin", {"text": raw})
+    assert out["ok"] is True
+    assert out["summary_chars"] < out["original_chars"]

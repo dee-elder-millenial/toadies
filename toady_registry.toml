@@ -1,0 +1,37 @@
+# Toady registry — static routing for the distribution layer.
+# Boxes are physical Ollama endpoints; each toady references a box by name.
+# Loaded by toadies.registry.load_default(); see docs/superpowers/specs/
+# 2026-06-23-toadies-distribution-layer-design.md.
+
+[boxes.workbench]                       # GPU — Toadette's home + fallback target
+url         = "https://dees-workbench.local/"
+api_key_env = "TOADIES_WORKBENCH_KEY"   # optional; ignored if unset
+
+[boxes.desktop]                         # CPU offload box (stand up Ollama there to use)
+url         = "http://dees-desktop.local:11434/"
+api_key_env = "TOADIES_DESKTOP_KEY"
+
+[routing]
+fallback = "workbench"
+
+# --- deterministic toadies (in-process, no model, no network) ---
+[toadies.gremlin]
+tier    = "deterministic"
+handler = "gremlin_compress"
+
+[toadies.bouncer]
+tier    = "deterministic"
+handler = "bouncer_scan"
+
+[toadies.accountant]
+tier    = "deterministic"
+handler = "accountant_status"
+
+# --- model-backed toadies (Ollama) ---
+# Scribe is meant for the desktop CPU box; until it exists, calls fall back to the
+# workbench GPU (same model must be pullable there — llama3.2:3b is).
+[toadies.scribe]
+tier      = "cpu-model"
+box       = "desktop"
+model     = "llama3.2:3b"
+timeout_s = 30

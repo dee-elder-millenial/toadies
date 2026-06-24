@@ -7,8 +7,12 @@ Ollama box for model-backed ones). Pure and inspectable; no network here.
 
 from __future__ import annotations
 
+import os
 import tomllib
 from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parent.parent / "toady_registry.toml"
 
 VALID_TIERS = ("deterministic", "cpu-model", "gpu-model")
 MODEL_TIERS = ("cpu-model", "gpu-model")
@@ -57,6 +61,11 @@ class Registry:
             model=spec.get("model"),
             timeout_s=spec.get("timeout_s", 60),
         )
+
+
+def load_default() -> Registry:
+    """Load the repo's seeded registry (or TOADIES_REGISTRY if set)."""
+    return load(os.environ.get("TOADIES_REGISTRY", str(DEFAULT_REGISTRY_PATH)))
 
 
 def load(path: str) -> Registry:
