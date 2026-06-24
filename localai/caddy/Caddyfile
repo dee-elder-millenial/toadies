@@ -27,3 +27,21 @@
 :8443 {
   import ollama
 }
+
+# Container path: serve Ollama's DEFAULT port 11434 but bind ONLY the docker-bridge
+# gateway IP (172.17.0.1) so it does NOT collide with Ollama's own 127.0.0.1:11434.
+# The Open WebUI container's host.docker.internal:11434 then reaches Ollama with no
+# config change. Plain HTTP (no cert). (Accepted: reachable to docker + LAN.)
+http://:11434 {
+  bind 172.17.0.1
+  reverse_proxy 127.0.0.1:11434 {
+    header_up Host 127.0.0.1:11434
+  }
+}
+
+# Bonus: plain-HTTP Ollama on :11435 LAN-wide (optional alternate URL).
+:11435 {
+  reverse_proxy 127.0.0.1:11434 {
+    header_up Host 127.0.0.1:11434
+  }
+}
