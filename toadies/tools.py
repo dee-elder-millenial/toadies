@@ -129,6 +129,21 @@ def list_tools():
                 },
             },
         },
+        {
+            "name": "toady_dispatch",
+            "description": "Invoke any registered toady by name through the distribution "
+                           "layer (registry routing: in-process for deterministic toadies, "
+                           "Ollama for model-backed ones, with fall-back to the GPU box). "
+                           "Pass `toady` and a `payload` object.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "toady": {"type": "string"},
+                    "payload": {"type": "object"},
+                },
+                "required": ["toady"],
+            },
+        },
     ]
 
 
@@ -147,7 +162,18 @@ def dispatch(name, arguments, *, db_path=None):
         return _toadie_interject(arguments, db_path)
     if name == "toadie_interjection_inbox":
         return _toadie_interjection_inbox(arguments, db_path)
+    if name == "toady_dispatch":
+        return _toady_dispatch(arguments)
     raise ToolError(f"unknown tool: {name}")
+
+
+def _toady_dispatch(args):
+    # Lazy import: dispatch.py imports tools, so importing at module load would cycle.
+    from . import dispatch
+    toady = args.get("toady")
+    if not toady:
+        raise ToolError("toady_dispatch requires 'toady'")
+    return dispatch.run(toady, args.get("payload", {}))
 
 
 def _gremlin_compress(args):

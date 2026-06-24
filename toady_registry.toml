@@ -1,15 +1,13 @@
 # Toady registry — static routing for the distribution layer.
-# Boxes are physical Ollama endpoints; each toady references a box by name.
-# Loaded by toadies.registry.load_default(); see docs/superpowers/specs/
-# 2026-06-23-toadies-distribution-layer-design.md.
+#
+# Single machine: dees-workbench. Ollama auto-shares GPU/CPU on the one box (it spills
+# a too-big model's layers onto the CPU by itself), so there is NO separate CPU instance
+# or box. The registry still supports multiple boxes + fallback if one is ever added
+# later (e.g. the SBE-Lenovo Windows laptop as an occasional worker).
 
-[boxes.workbench]                       # GPU — Toadette's home + fallback target
+[boxes.workbench]                       # the one box: RX 580 GPU; Ollama spills to CPU as needed
 url         = "https://dees-workbench.local/"
 api_key_env = "TOADIES_WORKBENCH_KEY"   # optional; ignored if unset
-
-[boxes.desktop]                         # CPU offload box (stand up Ollama there to use)
-url         = "http://dees-desktop.local:11434/"
-api_key_env = "TOADIES_DESKTOP_KEY"
 
 [routing]
 fallback = "workbench"
@@ -27,11 +25,9 @@ handler = "bouncer_scan"
 tier    = "deterministic"
 handler = "accountant_status"
 
-# --- model-backed toadies (Ollama) ---
-# Scribe is meant for the desktop CPU box; until it exists, calls fall back to the
-# workbench GPU (same model must be pullable there — llama3.2:3b is).
+# --- model-backed toady (Ollama on the workbench; GPU with automatic CPU overflow) ---
 [toadies.scribe]
-tier      = "cpu-model"
-box       = "desktop"
+tier      = "gpu-model"
+box       = "workbench"
 model     = "llama3.2:3b"
 timeout_s = 30

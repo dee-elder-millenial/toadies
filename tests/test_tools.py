@@ -199,3 +199,31 @@ def test_dispatch_judge_and_grade_rejects_invalid_source(monkeypatch):
         tools.dispatch("judge_and_grade", {
             "toadie": "gremlin", "task_type": "pytest", "output_text": "out", "source": "bad"
         })
+
+
+_DIST_CONFIG = '''
+[boxes.workbench]
+url = "https://dees-workbench.local/"
+
+[routing]
+fallback = "workbench"
+
+[toadies.gremlin]
+tier = "deterministic"
+handler = "gremlin_compress"
+'''
+
+
+def test_list_tools_includes_toady_dispatch():
+    names = {t["name"] for t in tools.list_tools()}
+    assert "toady_dispatch" in names
+
+
+def test_toady_dispatch_routes_through_the_distribution_layer(tmp_path, monkeypatch):
+    cfg = tmp_path / "toady_registry.toml"
+    cfg.write_text(_DIST_CONFIG)
+    monkeypatch.setenv("TOADIES_REGISTRY", str(cfg))
+    raw = "log line\n" * 30 + "FAILED tests/test_x.py::t - assert 1 == 2\n"
+    out = tools.dispatch("toady_dispatch", {"toady": "gremlin", "payload": {"text": raw}})
+    assert out["ok"] is True
+    assert out["summary_chars"] < out["original_chars"]
